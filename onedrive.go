@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/koofr/go-httpclient"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -13,8 +14,9 @@ import (
 )
 
 type OneDrive struct {
-	ApiClient *httpclient.HTTPClient
-	Auth      *OneDriveAuth
+	ApiClient     *httpclient.HTTPClient
+	ContentClient *httpclient.HTTPClient
+	Auth          *OneDriveAuth
 }
 
 type OneDriveAuth struct {
@@ -67,7 +69,7 @@ func NewOneDriveClient(auth OneDriveAuth) *OneDrive {
 	apiBaseUrl, _ := url.Parse("https://apis.live.net/v5.0")
 	apiHttpClient := httpclient.New()
 	apiHttpClient.BaseURL = apiBaseUrl
-	return &OneDrive{apiHttpClient, &auth}
+	return &OneDrive{apiHttpClient, httpclient.New(), &auth}
 }
 
 func (d *OneDrive) authenticationHeader() (hs http.Header, err error) {
@@ -128,6 +130,33 @@ func (d *OneDrive) NodeFiles(id string) (files []NodeInfo, err error) {
 	}
 
 	files = resp.Data
+	return
+}
+
+func (d *OneDrive) Download(id string) (info NodeInfo, content io.ReadCloser, err error) {
+	info, err = d.NodeInfo(id)
+	if err != nil {
+		return
+	}
+
+	url := info.Source
+	if url == "" {
+		err = fmt.Errorf("Cannot download %s", id)
+		return
+	}
+
+	req := httpclient.RequestData{
+		Method:         "GET",
+		FullURL:        url,
+		ExpectedStatus: []int{http.StatusOK},
+	}
+
+	res, err := d.ContentClient.Request(&req)
+	if err != nil {
+		return
+	}
+
+	content = res.Body
 	return
 }
 

@@ -12,6 +12,7 @@ type NodeInfo struct {
 	Size        int64  `json"size"`
 	Type        string `json"type"`
 	UpdatedTime string `json"updated_time"`
+	Source      string `json"source,omitempty"`
 }
 
 type NodeFiles struct {
