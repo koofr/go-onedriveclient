@@ -160,6 +160,28 @@ func (d *OneDrive) Download(id string) (info NodeInfo, content io.ReadCloser, er
 	return
 }
 
+func (d *OneDrive) Upload(dirId string, name string, content io.Reader) (err error) {
+	header, err := d.authenticationHeader()
+	if err != nil {
+		return
+	}
+
+	req := httpclient.RequestData{
+		Method:         "PUT",
+		Path:           "/" + dirId + "/files/" + name,
+		Headers:        header,
+		ReqReader:      content,
+		ExpectedStatus: []int{200, 201},
+	}
+
+	_, err = d.ApiClient.Request(&req)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func (d *OneDrive) ResolvePath(pth string) (id string, err error) {
 	root, err := d.RootInfo()
 	if err != nil {
