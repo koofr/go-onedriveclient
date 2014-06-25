@@ -162,6 +162,8 @@ func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, c
 		return
 	}
 
+	info.Size = res.ContentLength
+
 	content = res.Body
 	return
 }
