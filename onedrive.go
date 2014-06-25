@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/koofr/go-httpclient"
+	"github.com/koofr/go-ioutils"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -133,7 +134,7 @@ func (d *OneDrive) NodeFiles(id string) (files []NodeInfo, err error) {
 	return
 }
 
-func (d *OneDrive) Download(id string) (info NodeInfo, content io.ReadCloser, err error) {
+func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, content io.ReadCloser, err error) {
 	info, err = d.NodeInfo(id)
 	if err != nil {
 		return
@@ -148,7 +149,12 @@ func (d *OneDrive) Download(id string) (info NodeInfo, content io.ReadCloser, er
 	req := httpclient.RequestData{
 		Method:         "GET",
 		FullURL:        url,
-		ExpectedStatus: []int{http.StatusOK},
+		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
+	}
+
+	if span != nil {
+		req.Headers = make(http.Header)
+		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))
 	}
 
 	res, err := d.ContentClient.Request(&req)
@@ -203,7 +209,7 @@ loopParts:
 				continue loopParts
 			}
 		}
-		return "", fmt.Errorf("Not found %s in %s", part, files)
+		return "", fmt.Errorf("Not found %s", part)
 	}
 	return
 }
