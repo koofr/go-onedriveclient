@@ -29,17 +29,18 @@ type OneDriveAuth struct {
 	ExpiresAt    time.Time
 }
 
-func (d *OneDriveAuth) validToken() (token string, err error) {
+func (d *OneDriveAuth) ValidToken() (token string, err error) {
 	if time.Now().Unix() > d.ExpiresAt.Unix() {
+		data := url.Values{}
+		data.Set("grant_type", "refresh_token")
+		data.Set("client_id", d.ClientId)
+		data.Set("client_secret", d.ClientSecret)
+		data.Set("redirect_uri", d.RedirectUri)
+		data.Set("refresh_token", d.RefreshToken)
+
 		var resp *http.Response
-		resp, err = http.PostForm("https://login.live.com/oauth20_token.srf",
-			url.Values{
-				"grant_type":    {"refresh_token"},
-				"client_id":     {d.ClientId},
-				"client_secret": {d.ClientSecret},
-				"redirect_uri":  {d.RedirectUri},
-				"refresh_token": {d.RefreshToken},
-			})
+
+		resp, err = http.PostForm("https://login.live.com/oauth20_token.srf", data)
 		if err != nil {
 			return
 		}
@@ -74,13 +75,14 @@ func NewOneDriveClient(auth OneDriveAuth) *OneDrive {
 }
 
 func (d *OneDrive) authenticationHeader() (hs http.Header, err error) {
-	token, err := d.Auth.validToken()
+	token, err := d.Auth.ValidToken()
 	if err != nil {
 		return
 	}
 
 	hs = make(http.Header)
 	hs.Set("Authorization", "Bearer "+token)
+
 	return
 }
 
