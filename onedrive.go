@@ -74,7 +74,7 @@ func NewOneDriveClient(auth OneDriveAuth) *OneDrive {
 	return &OneDrive{apiHttpClient, httpclient.New(), &auth}
 }
 
-func (d *OneDrive) authenticationHeader() (hs http.Header, err error) {
+func (d *OneDrive) AuthenticationHeader() (hs http.Header, err error) {
 	token, err := d.Auth.ValidToken()
 	if err != nil {
 		return
@@ -87,7 +87,7 @@ func (d *OneDrive) authenticationHeader() (hs http.Header, err error) {
 }
 
 func (d *OneDrive) NodeInfo(id string) (info NodeInfo, err error) {
-	header, err := d.authenticationHeader()
+	header, err := d.AuthenticationHeader()
 	if err != nil {
 		return
 	}
@@ -113,7 +113,7 @@ func (d *OneDrive) RootInfo() (info NodeInfo, err error) {
 }
 
 func (d *OneDrive) NodeFiles(id string) (files []NodeInfo, err error) {
-	header, err := d.authenticationHeader()
+	header, err := d.AuthenticationHeader()
 	if err != nil {
 		return
 	}
@@ -171,7 +171,7 @@ func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, c
 }
 
 func (d *OneDrive) Upload(dirId string, name string, content io.Reader) (err error) {
-	header, err := d.authenticationHeader()
+	header, err := d.AuthenticationHeader()
 	if err != nil {
 		return
 	}
