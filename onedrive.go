@@ -171,23 +171,46 @@ func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, c
 }
 
 func (d *OneDrive) Upload(dirId string, name string, content io.Reader) (err error) {
+	_, err = d.UploadOverwrite(dirId, name, true, content)
+
+	return
+}
+
+func (d *OneDrive) UploadOverwrite(dirId string, name string, overwrite bool, content io.Reader) (newName string, err error) {
 	header, err := d.AuthenticationHeader()
 	if err != nil {
 		return
 	}
 
+	params := url.Values{}
+
+	if overwrite {
+		params.Set("overwrite", "true")
+	} else {
+		params.Set("overwrite", "ChooseNewName")
+	}
+
+	resp := &struct {
+		Name string
+	}{}
+
 	req := httpclient.RequestData{
 		Method:         "PUT",
 		Path:           "/" + dirId + "/files/" + name,
+		Params:         params,
 		Headers:        header,
 		ReqReader:      content,
 		ExpectedStatus: []int{200, 201},
+		RespValue:      resp,
+		RespEncoding:   httpclient.EncodingJSON,
 	}
 
 	_, err = d.ApiClient.Request(&req)
 	if err != nil {
 		return
 	}
+
+	newName = resp.Name
 
 	return
 }
