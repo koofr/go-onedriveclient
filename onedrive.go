@@ -8,100 +8,101 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"strings"
+)
+
+const (
+	DefaultMaxFragmentSize = 60 * 1024 * 1024
 )
 
 type OneDrive struct {
-	ApiClient     *httpclient.HTTPClient
-	ContentClient *httpclient.HTTPClient
-	Auth          *OneDriveAuth
+	ApiClient       *httpclient.HTTPClient
+	Auth            *OneDriveAuth
+	MaxFragmentSize int64
 }
 
-func NewOneDriveClient(auth OneDriveAuth) *OneDrive {
-	apiBaseUrl, _ := url.Parse("https://apis.live.net/v5.0")
+func NewOneDrive(auth *OneDriveAuth) (d *OneDrive) {
+	apiBaseUrl, _ := url.Parse("https://api.onedrive.com/v1.0")
 	apiHttpClient := httpclient.New()
 	apiHttpClient.BaseURL = apiBaseUrl
-	return &OneDrive{apiHttpClient, httpclient.New(), &auth}
+
+	d = &OneDrive{
+		ApiClient:       apiHttpClient,
+		Auth:            auth,
+		MaxFragmentSize: DefaultMaxFragmentSize,
+	}
+
+	return
 }
 
-func (d *OneDrive) AuthenticationHeader() (hs http.Header, err error) {
+func (d *OneDrive) Request(request *httpclient.RequestData) (response *http.Response, err error) {
 	token, err := d.Auth.ValidToken()
 	if err != nil {
 		return
 	}
 
-	hs = make(http.Header)
-	hs.Set("Authorization", "Bearer "+token)
+	if request.Headers == nil {
+		request.Headers = http.Header{}
+	}
+
+	request.Headers.Set("Authorization", "Bearer "+token)
+
+	return d.ApiClient.Request(request)
+}
+
+func (d *OneDrive) NormalizePath(pth string) string {
+	return path.Clean("/" + pth)
+}
+
+func (d *OneDrive) Info(pth string) (item *Item, err error) {
+	pth = d.NormalizePath(pth)
+
+	req := &httpclient.RequestData{
+		Method:         "GET",
+		Path:           "/drive/root:" + pth,
+		ExpectedStatus: []int{http.StatusOK},
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &item,
+	}
+
+	_, err = d.Request(req)
+
+	if err != nil {
+		return
+	}
 
 	return
 }
 
-func (d *OneDrive) NodeInfo(id string) (info NodeInfo, err error) {
-	header, err := d.AuthenticationHeader()
+func (d *OneDrive) Download(pth string, span *ioutils.FileSpan) (item *Item, err error) {
+	pth = d.NormalizePath(pth)
+
+	item, err = d.Info(pth)
+
 	if err != nil {
 		return
 	}
 
 	req := &httpclient.RequestData{
-		Method:         "GET",
-		Path:           "/" + id,
-		Headers:        header,
-		ExpectedStatus: []int{200},
-		RespEncoding:   httpclient.EncodingJSON,
-		RespValue:      &info,
+		Method:          "GET",
+		Path:            "/drive/root:" + pth + ":/content",
+		ExpectedStatus:  []int{http.StatusFound},
+		IgnoreRedirects: true,
+		RespConsume:     true,
 	}
-	_, err = d.ApiClient.Request(req)
-	if err != nil {
-		return
-	}
-	return
-}
 
-func (d *OneDrive) RootInfo() (info NodeInfo, err error) {
-	info, err = d.NodeInfo("me/skydrive")
-	return
-}
+	res, err := d.Request(req)
 
-func (d *OneDrive) NodeFiles(id string) (files []NodeInfo, err error) {
-	header, err := d.AuthenticationHeader()
 	if err != nil {
 		return
 	}
 
-	var resp NodeFiles
-	req := &httpclient.RequestData{
-		Method:         "GET",
-		Path:           "/" + id + "/files",
-		Headers:        header,
-		ExpectedStatus: []int{200},
-		RespEncoding:   httpclient.EncodingJSON,
-		RespValue:      &resp,
-	}
-	_, err = d.ApiClient.Request(req)
-	if err != nil {
-		return
-	}
+	location := res.Header.Get("Location")
 
-	files = resp.Data
-	return
-}
-
-func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, content io.ReadCloser, err error) {
-	info, err = d.NodeInfo(id)
-	if err != nil {
-		return
-	}
-
-	url := info.Source
-	if url == "" {
-		err = fmt.Errorf("Cannot download %s", id)
-		return
-	}
-
-	req := httpclient.RequestData{
-		Method:         "GET",
-		FullURL:        url,
-		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
+	req = &httpclient.RequestData{
+		Method:          "GET",
+		FullURL:         location,
+		ExpectedStatus:  []int{http.StatusOK, http.StatusPartialContent},
+		IgnoreRedirects: true,
 	}
 
 	if span != nil {
@@ -109,106 +110,104 @@ func (d *OneDrive) Download(id string, span *ioutils.FileSpan) (info NodeInfo, c
 		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))
 	}
 
-	res, err := d.ContentClient.Request(&req)
+	res, err = d.Request(req)
+
 	if err != nil {
 		return
 	}
 
-	info.Size = res.ContentLength
-
-	content = res.Body
-	return
-}
-
-func (d *OneDrive) Upload(dirId string, name string, content io.Reader) (err error) {
-	_, err = d.UploadOverwrite(dirId, name, true, content)
+	item.Size = res.ContentLength
+	item.Reader = res.Body
 
 	return
 }
 
-func (d *OneDrive) UploadOverwrite(dirId string, name string, overwrite bool, content io.Reader) (newName string, err error) {
-	header, err := d.AuthenticationHeader()
-	if err != nil {
-		return
+func (d *OneDrive) Upload(pth string, overwrite bool, content io.Reader, size int64) (item *Item, err error) {
+	pth = d.NormalizePath(pth)
+
+	createUploadSession := &CreateUploadSession{
+		NameConflictBehavior: "rename",
 	}
-
-	params := url.Values{}
 
 	if overwrite {
-		params.Set("overwrite", "true")
-	} else {
-		params.Set("overwrite", "ChooseNewName")
+		createUploadSession.NameConflictBehavior = "replace"
 	}
 
-	resp := &struct {
-		Name string
-	}{}
+	uploadSession := &UploadSession{}
 
-	req := httpclient.RequestData{
-		Method:         "PUT",
-		Path:           "/" + dirId + "/files/" + name,
-		Params:         params,
-		Headers:        header,
-		ReqReader:      content,
-		ExpectedStatus: []int{200, 201},
-		RespValue:      resp,
+	req := &httpclient.RequestData{
+		Method:         "POST",
+		Path:           "/drive/root:" + pth + ":/upload.createSession",
+		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
+		ReqEncoding:    httpclient.EncodingJSON,
+		ReqValue:       createUploadSession,
 		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &uploadSession,
 	}
 
-	_, err = d.ApiClient.Request(&req)
+	_, err = d.Request(req)
+
 	if err != nil {
 		return
 	}
 
-	newName = resp.Name
+	reader := ioutils.NewEofReader(content)
 
-	return
-}
+	uploaded := int64(0)
 
-func (d *OneDrive) ResolvePath(pth string) (id string, err error) {
-	root, err := d.RootInfo()
-	if err != nil {
-		return
-	}
-	id = root.Id
+	for !reader.Eof {
+		start := uploaded
+		partSize := d.MaxFragmentSize
+		last := false
 
-loopParts:
-	for _, part := range pathParts(pth) {
-		var files []NodeInfo
-		files, err = d.NodeFiles(id)
-		if err != nil {
-			return
+		if left := size - uploaded; left <= partSize {
+			partSize = left
+			last = true
 		}
-		name := strings.ToLower(part)
-		for _, file := range files {
-			if strings.ToLower(file.Name) == name {
-				id = file.Id
-				continue loopParts
+
+		end := start + partSize - 1
+
+		uploaded += partSize
+
+		partReader := io.LimitReader(reader, partSize)
+
+		uploadHeaders := http.Header{}
+		uploadHeaders.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+
+		if last {
+			req = &httpclient.RequestData{
+				Method:         "PUT",
+				FullURL:        uploadSession.UploadUrl,
+				Headers:        uploadHeaders,
+				ExpectedStatus: []int{http.StatusOK, http.StatusCreated},
+				ReqReader:      partReader,
+				RespEncoding:   httpclient.EncodingJSON,
+				RespValue:      &item,
+			}
+
+			_, err = d.Request(req)
+
+			if err != nil {
+				return
+			}
+
+			return
+		} else {
+			req = &httpclient.RequestData{
+				Method:         "PUT",
+				FullURL:        uploadSession.UploadUrl,
+				Headers:        uploadHeaders,
+				ExpectedStatus: []int{http.StatusAccepted},
+				ReqReader:      partReader,
+			}
+
+			_, err = d.Request(req)
+
+			if err != nil {
+				return
 			}
 		}
-		return "", fmt.Errorf("Not found %s", part)
 	}
+
 	return
-}
-
-func pathParts(pth string) []string {
-	pth = path.Clean("/" + pth)
-	parts := make([]string, 0)
-	for pth != "/" {
-		var name string
-		pth, name = path.Split(pth)
-		pth = path.Clean(pth)
-		parts = append(parts, name)
-	}
-
-	//in-place reverse
-	l := len(parts) - 1
-	h := len(parts) / 2
-	for i := 0; i < h; i++ {
-		t := parts[i]
-		ii := l - i
-		parts[i] = parts[ii]
-		parts[ii] = t
-	}
-	return parts
 }
