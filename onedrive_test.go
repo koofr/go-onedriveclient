@@ -64,7 +64,7 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		_, err = client.Upload("file.txt", false, bytes.NewBufferString("12345"), 5)
+		_, err = client.Upload("file.txt", NameConflictBehaviorReplace, bytes.NewBufferString("12345"), 5)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -105,14 +105,14 @@ var _ = Describe("OneDrive", func() {
 		It("should upload file with nonexisting name", func() {
 			client.MaxFragmentSize = 3
 			data := bytes.NewBufferString("12345")
-			item, err := client.Upload("/new-file.txt", true, data, 5)
+			item, err := client.Upload("/new-file.txt", NameConflictBehaviorRename, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("new-file.txt"))
 		})
 
 		It("should upload file with existing name", func() {
 			data := bytes.NewBufferString("12345")
-			item, err := client.Upload("file.txt", false, data, 5)
+			item, err := client.Upload("file.txt", NameConflictBehaviorRename, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("file 1.txt"))
 
@@ -124,13 +124,19 @@ var _ = Describe("OneDrive", func() {
 
 		It("should overwrite existing file", func() {
 			data := bytes.NewBufferString("12345")
-			item, err := client.Upload("file.txt", true, data, 5)
+			item, err := client.Upload("file.txt", NameConflictBehaviorReplace, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("file.txt"))
 
 			item, err = client.Info("file.txt")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Size).To(Equal(int64(5)))
+		})
+
+		It("should not autorename", func() {
+			data := bytes.NewBufferString("12345")
+			_, err := client.Upload("file.txt", NameConflictBehaviorFail, data, 5)
+			Expect(err).To(HaveOccurred())
 		})
 	})
 

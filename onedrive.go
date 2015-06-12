@@ -11,7 +11,10 @@ import (
 )
 
 const (
-	DefaultMaxFragmentSize = 60 * 1024 * 1024
+	DefaultMaxFragmentSize      = 60 * 1024 * 1024
+	NameConflictBehaviorRename  = "rename"
+	NameConflictBehaviorReplace = "replace"
+	NameConflictBehaviorFail    = "fail"
 )
 
 type OneDrive struct {
@@ -122,15 +125,11 @@ func (d *OneDrive) Download(pth string, span *ioutils.FileSpan) (item *Item, err
 	return
 }
 
-func (d *OneDrive) Upload(pth string, overwrite bool, content io.Reader, size int64) (item *Item, err error) {
+func (d *OneDrive) Upload(pth string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
 	pth = d.NormalizePath(pth)
 
 	createUploadSession := &CreateUploadSession{
-		NameConflictBehavior: "rename",
-	}
-
-	if overwrite {
-		createUploadSession.NameConflictBehavior = "replace"
+		NameConflictBehavior: nameConflictBehavior,
 	}
 
 	uploadSession := &UploadSession{}
