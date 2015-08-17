@@ -6,7 +6,12 @@ import (
 )
 
 type CreateUploadSession struct {
+	Item UploadSessionItem `json:"item"`
+}
+
+type UploadSessionItem struct {
 	NameConflictBehavior string `json:"@name.conflictBehavior"`
+	Name                 string `json:"name"`
 }
 
 type UploadSession struct {

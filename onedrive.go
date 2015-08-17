@@ -2,12 +2,13 @@ package onedriveclient
 
 import (
 	"fmt"
-	"github.com/koofr/go-httpclient"
-	"github.com/koofr/go-ioutils"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
+
+	"github.com/koofr/go-httpclient"
+	"github.com/koofr/go-ioutils"
 )
 
 const (
@@ -129,7 +130,10 @@ func (d *OneDrive) Upload(pth string, nameConflictBehavior string, content io.Re
 	pth = d.NormalizePath(pth)
 
 	createUploadSession := &CreateUploadSession{
-		NameConflictBehavior: nameConflictBehavior,
+		Item: UploadSessionItem{
+			NameConflictBehavior: nameConflictBehavior,
+			Name:                 path.Base(pth),
+		},
 	}
 
 	uploadSession := &UploadSession{}
