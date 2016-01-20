@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+type RefreshResp struct {
+	ExpiresIn   int64  `json:"expires_in"`
+	AccessToken string `json:"access_token"`
+}
+
 type OneDriveAuth struct {
 	ClientId     string
 	ClientSecret string
@@ -31,27 +36,29 @@ func (d *OneDriveAuth) ValidToken() (token string, err error) {
 
 		resp, err = http.PostForm("https://login.live.com/oauth20_token.srf", data)
 		if err != nil {
-			return
+			return "", err
 		}
 
 		if resp.StatusCode != 200 {
 			err = fmt.Errorf("Token refresh failed %d: %s", resp.StatusCode, resp.Status)
-			return
+			return "", err
 		}
 
 		var buf []byte
 		if buf, err = ioutil.ReadAll(resp.Body); err != nil {
-			return
+			return "", err
 		}
 
 		var respVal RefreshResp
 		if err = json.Unmarshal(buf, &respVal); err != nil {
-			return
+			return "", err
 		}
 
 		d.AccessToken = respVal.AccessToken
 		d.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
 	}
+
 	token = d.AccessToken
-	return
+
+	return token, nil
 }
