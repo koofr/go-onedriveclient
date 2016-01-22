@@ -1,7 +1,6 @@
 package onedriveclient
 
 import (
-	"github.com/koofr/go-httpclient"
 	"time"
 )
 
@@ -154,31 +153,4 @@ type AsyncOperationStatus struct {
 	Operation          string  `json:"operation"`
 	PercentageComplete float64 `json:"percentageComplete"`
 	Status             string  `json:"status"`
-}
-
-const (
-	ErrorCodeItemNotFound      = "itemNotFound"
-	ErrorCodeNameAlreadyExists = "nameAlreadyExists"
-)
-
-type OneDriveErrorDetails struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-type OneDriveError struct {
-	Err             OneDriveErrorDetails `json:"error"`
-	HttpClientError *httpclient.InvalidStatusError
-}
-
-func (e *OneDriveError) Error() string {
-	return e.Err.Message
-}
-
-func IsOneDriveError(err error) (oneDriveErr *OneDriveError, ok bool) {
-	if ode, ok := err.(*OneDriveError); ok {
-		return ode, true
-	} else {
-		return nil, false
-	}
 }
