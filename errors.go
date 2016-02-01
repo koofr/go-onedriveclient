@@ -46,6 +46,10 @@ func HandleError(err error) error {
 			oneDriveErr.Err.Message = ise.Content
 		}
 
+		if oneDriveErr.Err.Message == "" {
+			oneDriveErr.Err.Message = ise.Error()
+		}
+
 		oneDriveErr.HttpClientError = ise
 
 		return oneDriveErr
