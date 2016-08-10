@@ -13,8 +13,9 @@ const (
 )
 
 type RefreshResp struct {
-	ExpiresIn   int64  `json:"expires_in"`
-	AccessToken string `json:"access_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 type RefreshRespError struct {
@@ -67,6 +68,7 @@ func (a *OneDriveAuth) ValidToken() (token string, err error) {
 		}
 
 		a.AccessToken = respVal.AccessToken
+		a.RefreshToken = respVal.RefreshToken
 		a.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
 	}
 
