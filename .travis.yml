@@ -1,0 +1,13 @@
+language: go
+go:
+  - 1.5
+  - 1.6
+  - tip
+
+before_install:
+- openssl aes-256-cbc -K $encrypted_0e7364139723_key -iv $encrypted_0e7364139723_iv
+  -in .travis.test_credentials.env.enc -out .travis.test_credentials.env -d
+
+install:
+  - go get -t ./...
+  - source .travis.test_credentials.env
