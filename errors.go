@@ -3,6 +3,7 @@ package onedriveclient
 import (
 	"encoding/json"
 	"github.com/koofr/go-httpclient"
+	"strings"
 )
 
 const (
@@ -36,7 +37,7 @@ func HandleError(err error) error {
 	if ise, ok := httpclient.IsInvalidStatusError(err); ok {
 		oneDriveErr := &OneDriveError{}
 
-		if ise.Headers.Get("Content-Type") == "application/json" {
+		if strings.HasPrefix(ise.Headers.Get("Content-Type"), "application/json") {
 			if jsonErr := json.Unmarshal([]byte(ise.Content), &oneDriveErr); jsonErr != nil {
 				oneDriveErr.Err.Code = "unknown"
 				oneDriveErr.Err.Message = ise.Content
