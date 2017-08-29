@@ -2,8 +2,10 @@ package onedriveclient
 
 import (
 	"encoding/json"
-	"github.com/koofr/go-httpclient"
+	"net/http"
 	"strings"
+
+	"github.com/koofr/go-httpclient"
 )
 
 const (
@@ -31,6 +33,20 @@ func IsOneDriveError(err error) (oneDriveErr *OneDriveError, ok bool) {
 	} else {
 		return nil, false
 	}
+}
+
+func IsErrorResync(err error) bool {
+	if ode, ok := IsOneDriveError(err); ok {
+		return ode.Err.Code == "resyncRequired" ||
+			ode.Err.Code == "ResyncChangesApplyDifferences" ||
+			ode.Err.Code == "ResyncChangesUploadDifferences" ||
+			ode.Err.Code == "resyncChangesApplyDifferences" ||
+			ode.Err.Code == "resyncChangesUploadDifferences" ||
+			ode.Err.Code == ErrorCodeItemNotFound ||
+			ode.HttpClientError.Got == http.StatusGone
+	}
+
+	return false
 }
 
 func HandleError(err error) error {

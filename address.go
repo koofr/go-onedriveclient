@@ -21,25 +21,29 @@ func (a Address) Subpath(path string) Address {
 	}
 }
 
-func (a Address) String() string {
-	return a.Address
+func (a Address) String(driveId string) string {
+	if driveId == "" {
+		return "/drive" + a.Address
+	}
+
+	return "/drives/" + driveId + a.Address
 }
 
 var AddressRoot = Address{
-	Address: "/drive/items/root",
+	Address: "/items/root",
 	Type:    AddressTypeId,
 }
 
 func AddressId(id string) Address {
 	return Address{
-		Address: "/drive/items/" + id,
+		Address: "/items/" + id,
 		Type:    AddressTypeId,
 	}
 }
 
 func AddressPath(pth string) Address {
 	return Address{
-		Address: "/drive/root:" + NormalizePath(pth) + ":",
+		Address: "/root:" + NormalizePath(pth) + ":",
 		Type:    AddressTypePath,
 	}
 }

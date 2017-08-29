@@ -33,12 +33,13 @@ type OneDriveAuth struct {
 	RefreshToken   string
 	ExpiresAt      time.Time
 	OnTokenRefresh func()
+	IsGraph        bool
 
 	mutex sync.Mutex
 }
 
 func (a *OneDriveAuth) ValidToken() (token string, err error) {
-	if time.Now().Unix() > a.ExpiresAt.Unix() {
+	if time.Now().Unix() > a.ExpiresAt.Add(-5*time.Minute).Unix() {
 		err = a.UpdateRefreshToken()
 		if err != nil {
 			return "", err
@@ -63,9 +64,15 @@ func (a *OneDriveAuth) UpdateRefreshToken() (err error) {
 
 	var respVal RefreshResp
 
+	fullURL := "https://login.live.com/oauth20_token.srf"
+
+	if a.IsGraph {
+		fullURL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	}
+
 	_, err = httpclient.DefaultClient.Request(&httpclient.RequestData{
 		Method:         "POST",
-		FullURL:        "https://login.live.com/oauth20_token.srf",
+		FullURL:        fullURL,
 		ExpectedStatus: []int{http.StatusOK},
 		ReqEncoding:    httpclient.EncodingForm,
 		ReqValue:       data,

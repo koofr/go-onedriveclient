@@ -26,6 +26,11 @@ type ChunkedUploadSessionDescriptor struct {
 	Name                 string `json:"name"`
 }
 
+type GraphChunkedUploadSessionDescriptor struct {
+	NameConflictBehavior string `json:"@microsoft.graph.conflictBehavior"`
+	Name                 string `json:"name,omitempty"`
+}
+
 type UploadSession struct {
 	UploadUrl          string    `json:"uploadUrl"`
 	ExpirationDateTime time.Time `json:"expirationDateTime"`
@@ -143,10 +148,28 @@ type DeltaCollectionPage struct {
 	Value    []*Item `json:"value"`
 	NextLink string  `json:"@odata.nextLink"`
 	Token    string  `json:"@delta.token"`
+
+	DeltaLink string `json:"@odata.deltaLink"`
+}
+
+type BaseCreateSessionBody interface {
+	GetName() string
 }
 
 type CreateSessionBody struct {
 	Item ChunkedUploadSessionDescriptor `json:"item"`
+}
+
+func (b *CreateSessionBody) GetName() string {
+	return b.Item.Name
+}
+
+type GraphCreateSessionBody struct {
+	Item GraphChunkedUploadSessionDescriptor `json:"item"`
+}
+
+func (b *GraphCreateSessionBody) GetName() string {
+	return b.Item.Name
 }
 
 type AsyncOperationStatus struct {

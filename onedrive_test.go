@@ -3,11 +3,12 @@ package onedriveclient
 import (
 	"bytes"
 	"fmt"
-	"github.com/koofr/go-ioutils"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/koofr/go-ioutils"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -17,12 +18,16 @@ var _ = Describe("OneDrive", func() {
 	var client *OneDrive
 	var fileItem *Item
 
+	driveID := os.Getenv("ONEDRIVE_DRIVE_ID")
+	isGraph := driveID != ""
+
 	auth := &OneDriveAuth{
 		ClientId:     os.Getenv("ONEDRIVE_CLIENT_ID"),
 		ClientSecret: os.Getenv("ONEDRIVE_CLIENT_SECRET"),
 		RedirectUri:  os.Getenv("ONEDRIVE_REDIRECT_URI"),
 		AccessToken:  os.Getenv("ONEDRIVE_ACCESS_TOKEN"),
 		RefreshToken: os.Getenv("ONEDRIVE_REFRESH_TOKEN"),
+		IsGraph:      isGraph,
 	}
 
 	if auth.ClientId == "" || auth.ClientSecret == "" || auth.RedirectUri == "" || auth.AccessToken == "" || auth.RefreshToken == "" || os.Getenv("ONEDRIVE_EXPIRES_AT") == "" {
@@ -34,7 +39,11 @@ var _ = Describe("OneDrive", func() {
 	auth.ExpiresAt = time.Unix(0, exp*1000000)
 
 	BeforeEach(func() {
-		client = NewOneDrive(auth)
+		if isGraph {
+			client = NewOneDriveGraph(auth, driveID)
+		} else {
+			client = NewOneDrive(auth)
+		}
 
 		children, err := client.ItemsChildren(AddressRoot, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -53,7 +62,11 @@ var _ = Describe("OneDrive", func() {
 			drive, err := client.Drive()
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(drive.DriveType).To(Equal("personal"))
+			if isGraph {
+				Expect(drive.DriveType).To(Equal("business"))
+			} else {
+				Expect(drive.DriveType).To(Equal("personal"))
+			}
 		})
 	})
 
@@ -174,7 +187,7 @@ var _ = Describe("OneDrive", func() {
 	})
 
 	Describe("ItemsCopy", func() {
-		It("should create a copy", func() {
+		It("should create a file copy", func() {
 			monitorUrl, err := client.ItemsCopy(AddressId(fileItem.Id), &ItemCopyBody{Name: "file copy.txt"})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -187,7 +200,28 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("should create a copy", func() {
+		It("should create a file copy into path", func() {
+			destItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dest"})
+			Expect(err).NotTo(HaveOccurred())
+
+			monitorUrl, err := client.ItemsCopy(AddressId(fileItem.Id), &ItemCopyBody{
+				Name: "file copy.txt",
+				ParentReference: &ItemReference{
+					Id: destItem.Id,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			item, err := client.ItemsCopyAwait(monitorUrl)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(item.Name).To(Equal("file copy.txt"))
+
+			_, err = client.ItemsGet(AddressPath("/dest/file copy.txt"))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should create a dir copy", func() {
 			dirItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dir"})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -215,32 +249,36 @@ var _ = Describe("OneDrive", func() {
 			firstDelta, err := client.ItemsDelta(AddressRoot, "", "")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(firstDelta.Value).To(HaveLen(2))
-			Expect(firstDelta.Value[0].Name).To(Equal("root"))
-			Expect(firstDelta.Value[1].Name).To(Equal("file.txt"))
+			if isGraph {
+				Expect(len(firstDelta.Value)).To(BeNumerically(">", 0))
+			} else {
+				Expect(firstDelta.Value).To(HaveLen(2))
+				Expect(firstDelta.Value[0].Name).To(Equal("root"))
+				Expect(firstDelta.Value[1].Name).To(Equal("file.txt"))
 
-			delta, err := client.ItemsDelta(AddressRoot, firstDelta.NextLink, "")
-			Expect(err).NotTo(HaveOccurred())
+				delta, err := client.ItemsDelta(AddressRoot, firstDelta.NextLink, "")
+				Expect(err).NotTo(HaveOccurred())
 
-			Expect(delta.Value).To(HaveLen(1))
-			Expect(delta.Value[0].Name).To(Equal("root"))
+				Expect(delta.Value).To(HaveLen(1))
+				Expect(delta.Value[0].Name).To(Equal("root"))
 
-			delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
-			Expect(err).NotTo(HaveOccurred())
+				delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
+				Expect(err).NotTo(HaveOccurred())
 
-			Expect(delta.Value).To(HaveLen(1))
-			Expect(delta.Value[0].Name).To(Equal("root"))
+				Expect(delta.Value).To(HaveLen(1))
+				Expect(delta.Value[0].Name).To(Equal("root"))
 
-			err = client.ItemsDelete(AddressId(fileItem.Id))
-			Expect(err).NotTo(HaveOccurred())
+				err = client.ItemsDelete(AddressId(fileItem.Id))
+				Expect(err).NotTo(HaveOccurred())
 
-			delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
-			Expect(err).NotTo(HaveOccurred())
+				delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
+				Expect(err).NotTo(HaveOccurred())
 
-			Expect(delta.Value).To(HaveLen(2))
-			Expect(delta.Value[0].Name).To(Equal("root"))
-			Expect(delta.Value[1].Name).To(Equal("file.txt"))
-			Expect(delta.Value[1].Deleted).NotTo(BeNil())
+				Expect(delta.Value).To(HaveLen(2))
+				Expect(delta.Value[0].Name).To(Equal("root"))
+				Expect(delta.Value[1].Name).To(Equal("file.txt"))
+				Expect(delta.Value[1].Deleted).NotTo(BeNil())
+			}
 		})
 	})
 
@@ -304,6 +342,20 @@ var _ = Describe("OneDrive", func() {
 			Expect(item.Name).To(Equal("file.txt"))
 
 			item, err = client.ItemsGet(AddressPath("/file.txt"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.Size).To(Equal(int64(5)))
+		})
+
+		It("should overwrite existing file in folder", func() {
+			dirItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dir"})
+			Expect(err).NotTo(HaveOccurred())
+
+			data := bytes.NewBufferString("12345")
+			item, err := client.ItemsUpload(AddressId(dirItem.Id), "file.txt", NameConflictBehaviorReplace, data, 5)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.Name).To(Equal("file.txt"))
+
+			item, err = client.ItemsGet(AddressPath("/dir/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Size).To(Equal(int64(5)))
 		})

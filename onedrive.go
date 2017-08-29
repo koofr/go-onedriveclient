@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/koofr/go-httpclient"
@@ -21,6 +22,8 @@ type OneDrive struct {
 	ApiClient       *httpclient.HTTPClient
 	Auth            *OneDriveAuth
 	MaxFragmentSize int64
+	DriveId         string
+	IsGraph         bool
 }
 
 func NewOneDrive(auth *OneDriveAuth) (c *OneDrive) {
@@ -32,6 +35,24 @@ func NewOneDrive(auth *OneDriveAuth) (c *OneDrive) {
 		ApiClient:       apiHttpClient,
 		Auth:            auth,
 		MaxFragmentSize: DefaultMaxFragmentSize,
+		DriveId:         "",
+		IsGraph:         false,
+	}
+
+	return c
+}
+
+func NewOneDriveGraph(auth *OneDriveAuth, driveId string) (c *OneDrive) {
+	apiBaseUrl, _ := url.Parse("https://graph.microsoft.com/v1.0/me")
+	apiHttpClient := httpclient.New()
+	apiHttpClient.BaseURL = apiBaseUrl
+
+	c = &OneDrive{
+		ApiClient:       apiHttpClient,
+		Auth:            auth,
+		MaxFragmentSize: DefaultMaxFragmentSize,
+		DriveId:         driveId,
+		IsGraph:         true,
 	}
 
 	return c
@@ -83,7 +104,7 @@ func (c *OneDrive) Drive() (drive *Drive, err error) {
 func (c *OneDrive) ItemsGet(address Address) (item *Item, err error) {
 	req := &httpclient.RequestData{
 		Method:         "GET",
-		Path:           address.String(),
+		Path:           address.String(c.DriveId),
 		ExpectedStatus: []int{http.StatusOK},
 		RespEncoding:   httpclient.EncodingJSON,
 		RespValue:      &item,
@@ -101,7 +122,7 @@ func (c *OneDrive) ItemsGet(address Address) (item *Item, err error) {
 func (c *OneDrive) ItemsUpdate(address Address, itemUpdate *ItemUpdateBody) (item *Item, err error) {
 	req := &httpclient.RequestData{
 		Method:         "PATCH",
-		Path:           address.String(),
+		Path:           address.String(c.DriveId),
 		ExpectedStatus: []int{http.StatusOK},
 		ReqEncoding:    httpclient.EncodingJSON,
 		ReqValue:       itemUpdate,
@@ -121,7 +142,7 @@ func (c *OneDrive) ItemsUpdate(address Address, itemUpdate *ItemUpdateBody) (ite
 func (c *OneDrive) ItemsDelete(address Address) (err error) {
 	req := &httpclient.RequestData{
 		Method:         "DELETE",
-		Path:           address.String(),
+		Path:           address.String(c.DriveId),
 		ExpectedStatus: []int{http.StatusNoContent},
 		RespConsume:    true,
 	}
@@ -138,7 +159,7 @@ func (c *OneDrive) ItemsDelete(address Address) (err error) {
 func (c *OneDrive) ItemsCreate(address Address, body *ItemCreateBody) (item *Item, err error) {
 	req := &httpclient.RequestData{
 		Method:         "POST",
-		Path:           address.Subpath("/children").String(),
+		Path:           address.Subpath("/children").String(c.DriveId),
 		ExpectedStatus: []int{http.StatusCreated},
 		ReqEncoding:    httpclient.EncodingJSON,
 		ReqValue:       body,
@@ -166,7 +187,7 @@ func (c *OneDrive) ItemsChildren(address Address, link string) (res *ItemCollect
 	if link != "" {
 		req.FullURL = link
 	} else {
-		req.Path = address.Subpath("/children").String()
+		req.Path = address.Subpath("/children").String(c.DriveId)
 	}
 
 	_, err = c.Request(req)
@@ -182,9 +203,15 @@ func (c *OneDrive) ItemsCopy(address Address, body *ItemCopyBody) (monitorUrl st
 	headers := make(http.Header)
 	headers.Set("Prefer", "respond-async")
 
+	path := address.Subpath("/action.copy").String(c.DriveId)
+
+	if c.IsGraph {
+		path = address.Subpath("/copy").String(c.DriveId)
+	}
+
 	req := &httpclient.RequestData{
 		Method:         "POST",
-		Path:           address.Subpath("/action.copy").String(),
+		Path:           path,
 		Headers:        headers,
 		ExpectedStatus: []int{http.StatusAccepted},
 		ReqEncoding:    httpclient.EncodingJSON,
@@ -217,9 +244,9 @@ func (c *OneDrive) ItemsCopyStatus(monitorUrl string) (status *AsyncOperationSta
 		return nil, nil, err
 	}
 
-	if res.StatusCode == http.StatusAccepted {
-		defer res.Body.Close()
+	defer res.Body.Close()
 
+	if res.StatusCode == http.StatusAccepted {
 		buf, err := ioutil.ReadAll(res.Body)
 
 		if err != nil {
@@ -233,27 +260,43 @@ func (c *OneDrive) ItemsCopyStatus(monitorUrl string) (status *AsyncOperationSta
 		}
 
 		return status, nil, nil
-	} else {
-		defer res.Body.Close()
+	}
 
-		location := res.Header.Get("Location")
+	location := res.Header.Get("Location")
 
-		req := &httpclient.RequestData{
-			Method:         "GET",
-			FullURL:        location,
-			ExpectedStatus: []int{http.StatusOK},
-			RespEncoding:   httpclient.EncodingJSON,
-			RespValue:      &item,
-		}
+	req = &httpclient.RequestData{
+		Method:         "GET",
+		FullURL:        location,
+		ExpectedStatus: []int{http.StatusOK},
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &item,
+	}
 
-		_, err = c.Request(req)
+	if c.IsGraph {
+		// we are redirected to sharepoint server where accesstoken is not valid anymore
+		locationURL, err := url.Parse(location)
 
 		if err != nil {
 			return nil, nil, err
 		}
 
-		return nil, item, nil
+		if strings.Contains(locationURL.Path, "/items/") {
+			pathParts := strings.Split(locationURL.Path, "/items/")
+
+			if len(pathParts) > 1 {
+				req.FullURL = ""
+				req.Path = AddressId(pathParts[1]).String(c.DriveId)
+			}
+		}
 	}
+
+	_, err = c.Request(req)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return nil, item, nil
 }
 
 func (c *OneDrive) ItemsCopyAwait(monitorUrl string) (item *Item, err error) {
@@ -286,7 +329,11 @@ func (c *OneDrive) ItemsDelta(address Address, link string, token string) (res *
 	if link != "" {
 		req.FullURL = link
 	} else {
-		req.Path = address.Subpath("/view.delta").String()
+		if c.IsGraph {
+			req.Path = address.Subpath("/delta").String(c.DriveId)
+		} else {
+			req.Path = address.Subpath("/view.delta").String(c.DriveId)
+		}
 
 		if token != "" {
 			req.Params = make(url.Values)
@@ -306,7 +353,7 @@ func (c *OneDrive) ItemsDelta(address Address, link string, token string) (res *
 func (c *OneDrive) ItemsContent(address Address, span *ioutils.FileSpan) (reader io.ReadCloser, size int64, err error) {
 	req := &httpclient.RequestData{
 		Method:          "GET",
-		Path:            address.Subpath("/content").String(),
+		Path:            address.Subpath("/content").String(c.DriveId),
 		ExpectedStatus:  []int{http.StatusFound},
 		IgnoreRedirects: true,
 		RespConsume:     true,
@@ -341,15 +388,27 @@ func (c *OneDrive) ItemsContent(address Address, span *ioutils.FileSpan) (reader
 	return res.Body, res.ContentLength, nil
 }
 
-func (c *OneDrive) ItemsUploadCreateSession(address Address, body *CreateSessionBody) (uploadSession *UploadSession, err error) {
+func (c *OneDrive) ItemsUploadCreateSession(address Address, body BaseCreateSessionBody) (uploadSession *UploadSession, err error) {
 	uploadSession = &UploadSession{}
 
 	var path string
 
 	if address.Type == AddressTypeId {
-		path = address.Subpath(":/" + body.Item.Name + ":/upload.createSession").String()
+		if c.IsGraph {
+			path = address.Subpath(":/" + body.GetName() + ":/createUploadSession").String(c.DriveId)
+		} else {
+			path = address.Subpath(":/" + body.GetName() + ":/upload.createSession").String(c.DriveId)
+		}
 	} else {
-		path = address.Subpath("/upload.createSession").String()
+		if c.IsGraph {
+			path = address.Subpath("/createUploadSession").String(c.DriveId)
+		} else {
+			path = address.Subpath("/upload.createSession").String(c.DriveId)
+		}
+	}
+
+	if c.IsGraph {
+		body.(*GraphCreateSessionBody).Item.Name = ""
 	}
 
 	req := &httpclient.RequestData{
@@ -372,15 +431,19 @@ func (c *OneDrive) ItemsUploadCreateSession(address Address, body *CreateSession
 }
 
 func (c *OneDrive) ItemsUploadSessionAppend(uploadSession *UploadSession, content io.Reader, start int64, end int64, size int64) (err error) {
+	contentLength := (end - start) + 1
+
 	uploadHeaders := http.Header{}
 	uploadHeaders.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+	uploadHeaders.Set("Content-Length", fmt.Sprintf("%d", (end-start)+1))
 
 	req := &httpclient.RequestData{
-		Method:         "PUT",
-		FullURL:        uploadSession.UploadUrl,
-		Headers:        uploadHeaders,
-		ExpectedStatus: []int{http.StatusAccepted},
-		ReqReader:      content,
+		Method:           "PUT",
+		FullURL:          uploadSession.UploadUrl,
+		Headers:          uploadHeaders,
+		ExpectedStatus:   []int{http.StatusAccepted},
+		ReqReader:        content,
+		ReqContentLength: contentLength,
 	}
 
 	_, err = c.Request(req)
@@ -395,17 +458,21 @@ func (c *OneDrive) ItemsUploadSessionAppend(uploadSession *UploadSession, conten
 func (c *OneDrive) ItemsUploadSessionFinish(uploadSession *UploadSession, content io.Reader, start int64, end int64, size int64) (item *Item, err error) {
 	item = &Item{}
 
+	contentLength := (end - start) + 1
+
 	uploadHeaders := http.Header{}
 	uploadHeaders.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
+	uploadHeaders.Set("Content-Length", fmt.Sprintf("%d", contentLength))
 
 	req := &httpclient.RequestData{
-		Method:         "PUT",
-		FullURL:        uploadSession.UploadUrl,
-		Headers:        uploadHeaders,
-		ExpectedStatus: []int{http.StatusOK, http.StatusCreated},
-		ReqReader:      content,
-		RespEncoding:   httpclient.EncodingJSON,
-		RespValue:      &item,
+		Method:           "PUT",
+		FullURL:          uploadSession.UploadUrl,
+		Headers:          uploadHeaders,
+		ExpectedStatus:   []int{http.StatusOK, http.StatusCreated},
+		ReqReader:        content,
+		ReqContentLength: contentLength,
+		RespEncoding:     httpclient.EncodingJSON,
+		RespValue:        &item,
 	}
 
 	_, err = c.Request(req)
@@ -418,11 +485,20 @@ func (c *OneDrive) ItemsUploadSessionFinish(uploadSession *UploadSession, conten
 }
 
 func (c *OneDrive) ItemsUpload(address Address, name string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
-	createSessionBody := &CreateSessionBody{
+	var createSessionBody BaseCreateSessionBody = &CreateSessionBody{
 		Item: ChunkedUploadSessionDescriptor{
 			NameConflictBehavior: nameConflictBehavior,
 			Name:                 name,
 		},
+	}
+
+	if c.IsGraph {
+		createSessionBody = &GraphCreateSessionBody{
+			Item: GraphChunkedUploadSessionDescriptor{
+				NameConflictBehavior: nameConflictBehavior,
+				Name:                 name,
+			},
+		}
 	}
 
 	uploadSession, err := c.ItemsUploadCreateSession(address, createSessionBody)
@@ -457,11 +533,11 @@ func (c *OneDrive) ItemsUpload(address Address, name string, nameConflictBehavio
 			}
 
 			return item, nil
-		} else {
-			err = c.ItemsUploadSessionAppend(uploadSession, partReader, start, end, size)
-			if err != nil {
-				return nil, err
-			}
+		}
+
+		err = c.ItemsUploadSessionAppend(uploadSession, partReader, start, end, size)
+		if err != nil {
+			return nil, err
 		}
 	}
 
