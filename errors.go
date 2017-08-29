@@ -2,6 +2,7 @@ package onedriveclient
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -12,6 +13,8 @@ const (
 	ErrorCodeItemNotFound      = "itemNotFound"
 	ErrorCodeNameAlreadyExists = "nameAlreadyExists"
 )
+
+var ErrCompletedNoItem = errors.New("Async task completed but no item")
 
 type OneDriveErrorDetails struct {
 	Code    string `json:"code"`

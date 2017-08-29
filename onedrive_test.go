@@ -63,7 +63,11 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			if isGraph {
-				Expect(drive.DriveType).To(Equal("business"))
+				if drive.DriveType == "business" {
+					Expect(drive.DriveType).To(Equal("business"))
+				} else {
+					Expect(drive.DriveType).To(Equal("personal"))
+				}
 			} else {
 				Expect(drive.DriveType).To(Equal("personal"))
 			}
@@ -192,9 +196,13 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			item, err := client.ItemsCopyAwait(monitorUrl)
-			Expect(err).NotTo(HaveOccurred())
 
-			Expect(item.Name).To(Equal("file copy.txt"))
+			if isGraph {
+				Expect(err).To(Equal(ErrCompletedNoItem))
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.Name).To(Equal("file copy.txt"))
+			}
 
 			_, err = client.ItemsGet(AddressPath("/file copy.txt"))
 			Expect(err).NotTo(HaveOccurred())
@@ -213,9 +221,14 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			item, err := client.ItemsCopyAwait(monitorUrl)
-			Expect(err).NotTo(HaveOccurred())
 
-			Expect(item.Name).To(Equal("file copy.txt"))
+			if isGraph {
+				Expect(err).To(Equal(ErrCompletedNoItem))
+			} else {
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(item.Name).To(Equal("file copy.txt"))
+			}
 
 			_, err = client.ItemsGet(AddressPath("/dest/file copy.txt"))
 			Expect(err).NotTo(HaveOccurred())
@@ -232,9 +245,13 @@ var _ = Describe("OneDrive", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			item, err := client.ItemsCopyAwait(monitorUrl)
-			Expect(err).NotTo(HaveOccurred())
+			if isGraph {
+				Expect(err).To(Equal(ErrCompletedNoItem))
+			} else {
+				Expect(err).NotTo(HaveOccurred())
 
-			Expect(item.Name).To(Equal("dir copy"))
+				Expect(item.Name).To(Equal("dir copy"))
+			}
 
 			_, err = client.ItemsGet(AddressPath("/dir copy"))
 			Expect(err).NotTo(HaveOccurred())

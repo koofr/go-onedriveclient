@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/koofr/go-httpclient"
@@ -83,10 +82,26 @@ func (c *OneDrive) Request(request *httpclient.RequestData) (res *http.Response,
 	return res, nil
 }
 
+func (c *OneDrive) RequestUnauthorized(request *httpclient.RequestData) (res *http.Response, err error) {
+	res, err = c.ApiClient.Request(request)
+
+	if err != nil {
+		return res, c.HandleError(err)
+	}
+
+	return res, nil
+}
+
 func (c *OneDrive) Drive() (drive *Drive, err error) {
+	path := "/drive"
+
+	if c.IsGraph {
+		path = "/drives/" + c.DriveId
+	}
+
 	req := &httpclient.RequestData{
 		Method:         "GET",
-		Path:           "/drive",
+		Path:           path,
 		ExpectedStatus: []int{http.StatusOK},
 		RespEncoding:   httpclient.EncodingJSON,
 		RespValue:      &drive,
@@ -231,6 +246,25 @@ func (c *OneDrive) ItemsCopy(address Address, body *ItemCopyBody) (monitorUrl st
 }
 
 func (c *OneDrive) ItemsCopyStatus(monitorUrl string) (status *AsyncOperationStatus, item *Item, err error) {
+	if c.IsGraph {
+		req := &httpclient.RequestData{
+			Method:          "GET",
+			FullURL:         monitorUrl,
+			ExpectedStatus:  []int{http.StatusAccepted, http.StatusOK},
+			RespValue:       &status,
+			RespEncoding:    httpclient.EncodingJSON,
+			IgnoreRedirects: true,
+		}
+
+		_, err = c.RequestUnauthorized(req)
+
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return status, nil, nil
+	}
+
 	req := &httpclient.RequestData{
 		Method:          "GET",
 		FullURL:         monitorUrl,
@@ -272,24 +306,6 @@ func (c *OneDrive) ItemsCopyStatus(monitorUrl string) (status *AsyncOperationSta
 		RespValue:      &item,
 	}
 
-	if c.IsGraph {
-		// we are redirected to sharepoint server where accesstoken is not valid anymore
-		locationURL, err := url.Parse(location)
-
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if strings.Contains(locationURL.Path, "/items/") {
-			pathParts := strings.Split(locationURL.Path, "/items/")
-
-			if len(pathParts) > 1 {
-				req.FullURL = ""
-				req.Path = AddressId(pathParts[1]).String(c.DriveId)
-			}
-		}
-	}
-
 	_, err = c.Request(req)
 
 	if err != nil {
@@ -312,6 +328,8 @@ func (c *OneDrive) ItemsCopyAwait(monitorUrl string) (item *Item, err error) {
 		}
 		if status.Status == AsyncOperationStatusFailed {
 			return nil, fmt.Errorf("Copy failed.")
+		} else if c.IsGraph && status.Status == AsyncOperationStatusCompleted {
+			return nil, ErrCompletedNoItem
 		}
 	}
 
