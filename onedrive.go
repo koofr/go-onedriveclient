@@ -3,6 +3,7 @@ package onedriveclient
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/koofr/go-pathutils"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,11 +19,12 @@ const (
 )
 
 type OneDrive struct {
-	ApiClient       *httpclient.HTTPClient
-	Auth            *OneDriveAuth
-	MaxFragmentSize int64
-	DriveId         string
-	IsGraph         bool
+	ApiClient                *httpclient.HTTPClient
+	Auth                     *OneDriveAuth
+	MaxFragmentSize          int64
+	DriveId                  string
+	IsGraph                  bool
+	UnusedFilenameMaxRetries int
 }
 
 func NewOneDrive(auth *OneDriveAuth) (c *OneDrive) {
@@ -36,6 +38,7 @@ func NewOneDrive(auth *OneDriveAuth) (c *OneDrive) {
 		MaxFragmentSize: DefaultMaxFragmentSize,
 		DriveId:         "",
 		IsGraph:         false,
+		UnusedFilenameMaxRetries: 100,
 	}
 
 	return c
@@ -52,6 +55,7 @@ func NewOneDriveGraph(auth *OneDriveAuth, driveId string) (c *OneDrive) {
 		MaxFragmentSize: DefaultMaxFragmentSize,
 		DriveId:         driveId,
 		IsGraph:         true,
+		UnusedFilenameMaxRetries: 100,
 	}
 
 	return c
@@ -132,6 +136,22 @@ func (c *OneDrive) ItemsGet(address Address) (item *Item, err error) {
 	}
 
 	return item, nil
+}
+
+func (c *OneDrive) ItemsGetHead(address Address) (exists bool, err error) {
+	req := &httpclient.RequestData{
+		Method:         "HEAD",
+		Path:           address.String(c.DriveId),
+		ExpectedStatus: []int{http.StatusOK, http.StatusNotFound},
+	}
+
+	res, err := c.Request(req)
+
+	if err != nil {
+		return false, err
+	}
+
+	return res.StatusCode == http.StatusOK, err
 }
 
 func (c *OneDrive) ItemsUpdate(address Address, itemUpdate *ItemUpdateBody) (item *Item, err error) {
@@ -512,6 +532,52 @@ func (c *OneDrive) ItemsUpload(address Address, name string, nameConflictBehavio
 
 func (c *OneDrive) ItemsUploadSimple(address Address, name string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
 	item = &Item{}
+
+	childrenMap := map[string]*Item{}
+
+	fileExists := func(name string) bool {
+		_, ok := childrenMap[name]
+		return ok
+	}
+
+	if nameConflictBehavior != NameConflictBehaviorReplace {
+		link := ""
+
+		for {
+			page, err := c.ItemsChildren(address, link)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(page.Value) == 0 {
+				break
+			}
+
+			for _, item := range page.Value {
+				childrenMap[item.Name] = item
+				//if item.Name == name {
+				//	return nil, fmt.Errorf("Autorename not supported")
+				//}
+			}
+
+			if page.NextLink == "" {
+				break
+			}
+
+			link = page.NextLink
+		}
+	}
+
+	if nameConflictBehavior == NameConflictBehaviorFail && fileExists(name) {
+		return nil, fmt.Errorf("File already exists")
+	}
+
+	if nameConflictBehavior == NameConflictBehaviorRename {
+		name, err = pathutils.UnusedFilename(fileExists, name, c.UnusedFilenameMaxRetries)
+		if err != nil {
+			return nil, fmt.Errorf("Max autorename attempts reached")
+		}
+	}
 
 	var path string
 
