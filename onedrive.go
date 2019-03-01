@@ -503,6 +503,47 @@ func (c *OneDrive) ItemsUploadSessionFinish(uploadSession *UploadSession, conten
 }
 
 func (c *OneDrive) ItemsUpload(address Address, name string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
+
+	if size == 0 {
+		return c.ItemsUploadSimple(address, name, nameConflictBehavior, content, size)
+	}
+	return c.ItemsUploadSession(address, name, nameConflictBehavior, content, size)
+}
+
+func (c *OneDrive) ItemsUploadSimple(address Address, name string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
+	item = &Item{}
+
+	var path string
+
+	if address.Type == AddressTypeId {
+		if c.IsGraph {
+			path = address.Subpath(":/" + name + ":/content").String(c.DriveId)
+		} else {
+			path = address.Subpath(":/" + name + ":/content").String(c.DriveId)
+		}
+	} else {
+		return nil, fmt.Errorf("Not implemented because I have no idea how to properly do it")
+	}
+
+	req := &httpclient.RequestData{
+		Method:         "PUT",
+		Path:           path,
+		ExpectedStatus: []int{http.StatusOK, http.StatusCreated},
+		ReqReader:      content,
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &item,
+	}
+
+	_, err = c.Request(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return item, nil
+}
+
+func (c *OneDrive) ItemsUploadSession(address Address, name string, nameConflictBehavior string, content io.Reader, size int64) (item *Item, err error) {
 	var createSessionBody BaseCreateSessionBody = &CreateSessionBody{
 		Item: ChunkedUploadSessionDescriptor{
 			NameConflictBehavior: nameConflictBehavior,
