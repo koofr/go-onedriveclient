@@ -47,9 +47,27 @@ type IdentitySet struct {
 	User        Identity `json:"user"`
 }
 
+type Timestamp time.Time
+
+const timestampFormat = `"` + time.RFC3339 + `"`
+
+func (t *Timestamp) MarshalJSON() (out []byte, err error) {
+	timeString := (*time.Time)(t).UTC().Format(timestampFormat)
+	return []byte(timeString), nil
+}
+
+func (t *Timestamp) UnmarshalJSON(data []byte) error {
+	newT, err := time.Parse(timestampFormat, string(data))
+	if err != nil {
+		return err
+	}
+	*t = Timestamp(newT)
+	return nil
+}
+
 type FileSystemInfo struct {
-	CreatedDateTime      time.Time `json:"createdDateTime"`
-	LastModifiedDateTime time.Time `json:"lastModifiedDateTime"`
+	CreatedDateTime      Timestamp `json:"createdDateTime"`
+	LastModifiedDateTime Timestamp `json:"lastModifiedDateTime"`
 }
 
 type Folder struct {
@@ -125,8 +143,9 @@ type Item struct {
 }
 
 type ItemUpdateBody struct {
-	Name            string         `json:"name,omitempty"`
-	ParentReference *ItemReference `json:"parentReference,omitempty"`
+	Name            string          `json:"name,omitempty"`
+	ParentReference *ItemReference  `json:"parentReference,omitempty"`
+	FileSystemInfo  *FileSystemInfo `json:"fileSystemInfo,omitempty"`
 }
 
 type ItemCreateBody struct {
