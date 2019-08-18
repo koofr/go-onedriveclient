@@ -1,6 +1,7 @@
 package onedriveclient
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -32,15 +33,16 @@ type OneDriveAuth struct {
 	AccessToken    string
 	RefreshToken   string
 	ExpiresAt      time.Time
-	OnTokenRefresh func()
+	OnTokenRefresh func(ctx context.Context)
 	IsGraph        bool
+	HTTPClient     *httpclient.HTTPClient
 
 	mutex sync.Mutex
 }
 
-func (a *OneDriveAuth) ValidToken() (token string, err error) {
+func (a *OneDriveAuth) ValidToken(ctx context.Context) (token string, err error) {
 	if time.Now().Unix() > a.ExpiresAt.Add(-5*time.Minute).Unix() {
-		err = a.UpdateRefreshToken()
+		err = a.UpdateRefreshToken(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -51,7 +53,7 @@ func (a *OneDriveAuth) ValidToken() (token string, err error) {
 	return token, nil
 }
 
-func (a *OneDriveAuth) UpdateRefreshToken() (err error) {
+func (a *OneDriveAuth) UpdateRefreshToken(ctx context.Context) (err error) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -70,7 +72,13 @@ func (a *OneDriveAuth) UpdateRefreshToken() (err error) {
 		fullURL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 	}
 
-	_, err = httpclient.DefaultClient.Request(&httpclient.RequestData{
+	client := a.HTTPClient
+	if client == nil {
+		client = httpclient.DefaultClient
+	}
+
+	_, err = client.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "POST",
 		FullURL:        fullURL,
 		ExpectedStatus: []int{http.StatusOK},
@@ -99,7 +107,7 @@ func (a *OneDriveAuth) UpdateRefreshToken() (err error) {
 	a.ExpiresAt = time.Now().Add(time.Duration(respVal.ExpiresIn) * time.Second)
 
 	if a.OnTokenRefresh != nil {
-		a.OnTokenRefresh()
+		a.OnTokenRefresh(ctx)
 	}
 
 	return nil

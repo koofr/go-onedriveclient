@@ -2,6 +2,7 @@ package onedriveclient
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -45,21 +46,21 @@ var _ = Describe("OneDrive", func() {
 			client = NewOneDrive(auth)
 		}
 
-		children, err := client.ItemsChildren(AddressRoot, "")
+		children, err := client.ItemsChildren(context.Background(), AddressRoot, "")
 		Expect(err).NotTo(HaveOccurred())
 
 		for _, item := range children.Value {
-			err = client.ItemsDelete(AddressId(item.Id))
+			err = client.ItemsDelete(context.Background(), AddressId(item.Id))
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		fileItem, err = client.ItemsUpload(AddressRoot, "file.txt", NameConflictBehaviorReplace, bytes.NewBufferString("12345"), 5)
+		fileItem, err = client.ItemsUpload(context.Background(), AddressRoot, "file.txt", NameConflictBehaviorReplace, bytes.NewBufferString("12345"), 5)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	Describe("Drive", func() {
 		It("should get default drive", func() {
-			drive, err := client.Drive()
+			drive, err := client.Drive(context.Background())
 			Expect(err).NotTo(HaveOccurred())
 
 			if isGraph {
@@ -76,24 +77,24 @@ var _ = Describe("OneDrive", func() {
 
 	Describe("ItemsGet", func() {
 		It("should get item info by path", func() {
-			item, err := client.ItemsGet(AddressPath("/file.txt"))
+			item, err := client.ItemsGet(context.Background(), AddressPath("/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.Size).To(Equal(int64(5)))
 		})
 
 		It("should get item info by id", func() {
-			item, err := client.ItemsGet(AddressId(fileItem.Id))
+			item, err := client.ItemsGet(context.Background(), AddressId(fileItem.Id))
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.Size).To(Equal(int64(5)))
 		})
 
 		It("should not get deleted item", func() {
-			err := client.ItemsDelete(AddressId(fileItem.Id))
+			err := client.ItemsDelete(context.Background(), AddressId(fileItem.Id))
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.ItemsGet(AddressPath("/file.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/file.txt"))
 			Expect(err).To(HaveOccurred())
 
 			ode, ok := IsOneDriveError(err)
@@ -108,24 +109,24 @@ var _ = Describe("OneDrive", func() {
 				Name: "renamed.txt",
 			}
 
-			item, err := client.ItemsUpdate(AddressId(fileItem.Id), itemUpdate)
+			item, err := client.ItemsUpdate(context.Background(), AddressId(fileItem.Id), itemUpdate)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.Name).To(Equal("renamed.txt"))
 
-			_, err = client.ItemsGet(AddressPath("/renamed.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/renamed.txt"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should not rename item if it already exists", func() {
-			_, err := client.ItemsUpload(AddressRoot, "existing.txt", NameConflictBehaviorReplace, bytes.NewBufferString("123456"), 6)
+			_, err := client.ItemsUpload(context.Background(), AddressRoot, "existing.txt", NameConflictBehaviorReplace, bytes.NewBufferString("123456"), 6)
 			Expect(err).NotTo(HaveOccurred())
 
 			itemUpdate := &ItemUpdateBody{
 				Name: "existing.txt",
 			}
 
-			_, err = client.ItemsUpdate(AddressId(fileItem.Id), itemUpdate)
+			_, err = client.ItemsUpdate(context.Background(), AddressId(fileItem.Id), itemUpdate)
 			Expect(err).To(HaveOccurred())
 
 			ode, ok := IsOneDriveError(err)
@@ -134,7 +135,7 @@ var _ = Describe("OneDrive", func() {
 		})
 
 		It("should move item", func() {
-			dirItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dir"})
+			dirItem, err := client.ItemsCreate(context.Background(), AddressRoot, &ItemCreateBody{Name: "dir"})
 			Expect(err).NotTo(HaveOccurred())
 
 			itemUpdate := &ItemUpdateBody{
@@ -143,22 +144,22 @@ var _ = Describe("OneDrive", func() {
 				},
 			}
 
-			item, err := client.ItemsUpdate(AddressId(fileItem.Id), itemUpdate)
+			item, err := client.ItemsUpdate(context.Background(), AddressId(fileItem.Id), itemUpdate)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.ParentReference.Id).To(Equal(dirItem.Id))
 
-			_, err = client.ItemsGet(AddressPath("/dir/file.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/dir/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Describe("ItemsDelete", func() {
 		It("should delete", func() {
-			err := client.ItemsDelete(AddressId(fileItem.Id))
+			err := client.ItemsDelete(context.Background(), AddressId(fileItem.Id))
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.ItemsGet(AddressPath("/file.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/file.txt"))
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -169,19 +170,19 @@ var _ = Describe("OneDrive", func() {
 				Name: "new folder",
 			}
 
-			item, err := client.ItemsCreate(AddressRoot, itemCreate)
+			item, err := client.ItemsCreate(context.Background(), AddressRoot, itemCreate)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.Name).To(Equal("new folder"))
 
-			_, err = client.ItemsGet(AddressPath("/new folder"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/new folder"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Describe("ItemsChildren", func() {
 		It("should get children", func() {
-			children, err := client.ItemsChildren(AddressRoot, "")
+			children, err := client.ItemsChildren(context.Background(), AddressRoot, "")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(children.Value).To(HaveLen(1))
@@ -192,10 +193,10 @@ var _ = Describe("OneDrive", func() {
 
 	Describe("ItemsCopy", func() {
 		It("should create a file copy", func() {
-			monitorUrl, err := client.ItemsCopy(AddressId(fileItem.Id), &ItemCopyBody{Name: "file copy.txt"})
+			monitorUrl, err := client.ItemsCopy(context.Background(), AddressId(fileItem.Id), &ItemCopyBody{Name: "file copy.txt"})
 			Expect(err).NotTo(HaveOccurred())
 
-			item, err := client.ItemsCopyAwait(monitorUrl)
+			item, err := client.ItemsCopyAwait(context.Background(), monitorUrl)
 
 			if isGraph {
 				Expect(err).To(Equal(ErrCompletedNoItem))
@@ -204,15 +205,15 @@ var _ = Describe("OneDrive", func() {
 				Expect(item.Name).To(Equal("file copy.txt"))
 			}
 
-			_, err = client.ItemsGet(AddressPath("/file copy.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/file copy.txt"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should create a file copy into path", func() {
-			destItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dest"})
+			destItem, err := client.ItemsCreate(context.Background(), AddressRoot, &ItemCreateBody{Name: "dest"})
 			Expect(err).NotTo(HaveOccurred())
 
-			monitorUrl, err := client.ItemsCopy(AddressId(fileItem.Id), &ItemCopyBody{
+			monitorUrl, err := client.ItemsCopy(context.Background(), AddressId(fileItem.Id), &ItemCopyBody{
 				Name: "file copy.txt",
 				ParentReference: &ItemReference{
 					Id: destItem.Id,
@@ -220,7 +221,7 @@ var _ = Describe("OneDrive", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			item, err := client.ItemsCopyAwait(monitorUrl)
+			item, err := client.ItemsCopyAwait(context.Background(), monitorUrl)
 
 			if isGraph {
 				Expect(err).To(Equal(ErrCompletedNoItem))
@@ -230,21 +231,21 @@ var _ = Describe("OneDrive", func() {
 				Expect(item.Name).To(Equal("file copy.txt"))
 			}
 
-			_, err = client.ItemsGet(AddressPath("/dest/file copy.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/dest/file copy.txt"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should create a dir copy", func() {
-			dirItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dir"})
+			dirItem, err := client.ItemsCreate(context.Background(), AddressRoot, &ItemCreateBody{Name: "dir"})
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.ItemsUpload(AddressId(dirItem.Id), "file.txt", NameConflictBehaviorReplace, bytes.NewBufferString("123456"), 6)
+			_, err = client.ItemsUpload(context.Background(), AddressId(dirItem.Id), "file.txt", NameConflictBehaviorReplace, bytes.NewBufferString("123456"), 6)
 			Expect(err).NotTo(HaveOccurred())
 
-			monitorUrl, err := client.ItemsCopy(AddressId(dirItem.Id), &ItemCopyBody{Name: "dir copy"})
+			monitorUrl, err := client.ItemsCopy(context.Background(), AddressId(dirItem.Id), &ItemCopyBody{Name: "dir copy"})
 			Expect(err).NotTo(HaveOccurred())
 
-			item, err := client.ItemsCopyAwait(monitorUrl)
+			item, err := client.ItemsCopyAwait(context.Background(), monitorUrl)
 			if isGraph {
 				Expect(err).To(Equal(ErrCompletedNoItem))
 			} else {
@@ -253,17 +254,17 @@ var _ = Describe("OneDrive", func() {
 				Expect(item.Name).To(Equal("dir copy"))
 			}
 
-			_, err = client.ItemsGet(AddressPath("/dir copy"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/dir copy"))
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.ItemsGet(AddressPath("/dir copy/file.txt"))
+			_, err = client.ItemsGet(context.Background(), AddressPath("/dir copy/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Describe("ItemsDelta", func() {
 		It("should get items delta", func() {
-			firstDelta, err := client.ItemsDelta(AddressRoot, "", "")
+			firstDelta, err := client.ItemsDelta(context.Background(), AddressRoot, "", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			if isGraph {
@@ -273,22 +274,22 @@ var _ = Describe("OneDrive", func() {
 				Expect(firstDelta.Value[0].Name).To(Equal("root"))
 				Expect(firstDelta.Value[1].Name).To(Equal("file.txt"))
 
-				delta, err := client.ItemsDelta(AddressRoot, firstDelta.NextLink, "")
+				delta, err := client.ItemsDelta(context.Background(), AddressRoot, firstDelta.NextLink, "")
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(delta.Value).To(HaveLen(1))
 				Expect(delta.Value[0].Name).To(Equal("root"))
 
-				delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
+				delta, err = client.ItemsDelta(context.Background(), AddressRoot, "", firstDelta.Token)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(delta.Value).To(HaveLen(1))
 				Expect(delta.Value[0].Name).To(Equal("root"))
 
-				err = client.ItemsDelete(AddressId(fileItem.Id))
+				err = client.ItemsDelete(context.Background(), AddressId(fileItem.Id))
 				Expect(err).NotTo(HaveOccurred())
 
-				delta, err = client.ItemsDelta(AddressRoot, "", firstDelta.Token)
+				delta, err = client.ItemsDelta(context.Background(), AddressRoot, "", firstDelta.Token)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(delta.Value).To(HaveLen(2))
@@ -301,7 +302,7 @@ var _ = Describe("OneDrive", func() {
 
 	Describe("ItemsContent", func() {
 		It("should get content", func() {
-			reader, size, err := client.ItemsContent(AddressId(fileItem.Id), nil)
+			reader, size, err := client.ItemsContent(context.Background(), AddressId(fileItem.Id), nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(size).To(Equal(int64(5)))
 
@@ -312,7 +313,7 @@ var _ = Describe("OneDrive", func() {
 		})
 
 		It("should get content range", func() {
-			reader, size, err := client.ItemsContent(AddressId(fileItem.Id), &ioutils.FileSpan{2, 3})
+			reader, size, err := client.ItemsContent(context.Background(), AddressId(fileItem.Id), &ioutils.FileSpan{2, 3})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(size).To(Equal(int64(2)))
 
@@ -327,7 +328,7 @@ var _ = Describe("OneDrive", func() {
 		It("should upload file with nonexisting name", func() {
 			client.MaxFragmentSize = 3
 			data := bytes.NewBufferString("12345")
-			item, err := client.ItemsUpload(AddressRoot, "new-file.txt", NameConflictBehaviorRename, data, 5)
+			item, err := client.ItemsUpload(context.Background(), AddressRoot, "new-file.txt", NameConflictBehaviorRename, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("new-file.txt"))
 		})
@@ -335,18 +336,18 @@ var _ = Describe("OneDrive", func() {
 		It("should upload file with nonexisting name using path", func() {
 			client.MaxFragmentSize = 3
 			data := bytes.NewBufferString("12345")
-			item, err := client.ItemsUpload(AddressPath("/new-file.txt"), "new-file.txt", NameConflictBehaviorRename, data, 5)
+			item, err := client.ItemsUpload(context.Background(), AddressPath("/new-file.txt"), "new-file.txt", NameConflictBehaviorRename, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("new-file.txt"))
 		})
 
 		It("should upload file with existing name", func() {
 			data := bytes.NewBufferString("12345")
-			item, err := client.ItemsUpload(AddressRoot, "file.txt", NameConflictBehaviorRename, data, 5)
+			item, err := client.ItemsUpload(context.Background(), AddressRoot, "file.txt", NameConflictBehaviorRename, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("file 1.txt"))
 
-			item, err = client.ItemsGet(AddressPath("/file 1.txt"))
+			item, err = client.ItemsGet(context.Background(), AddressPath("/file 1.txt"))
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(item.Size).To(Equal(int64(5)))
@@ -354,32 +355,32 @@ var _ = Describe("OneDrive", func() {
 
 		It("should overwrite existing file", func() {
 			data := bytes.NewBufferString("12345")
-			item, err := client.ItemsUpload(AddressRoot, "file.txt", NameConflictBehaviorReplace, data, 5)
+			item, err := client.ItemsUpload(context.Background(), AddressRoot, "file.txt", NameConflictBehaviorReplace, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("file.txt"))
 
-			item, err = client.ItemsGet(AddressPath("/file.txt"))
+			item, err = client.ItemsGet(context.Background(), AddressPath("/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Size).To(Equal(int64(5)))
 		})
 
 		It("should overwrite existing file in folder", func() {
-			dirItem, err := client.ItemsCreate(AddressRoot, &ItemCreateBody{Name: "dir"})
+			dirItem, err := client.ItemsCreate(context.Background(), AddressRoot, &ItemCreateBody{Name: "dir"})
 			Expect(err).NotTo(HaveOccurred())
 
 			data := bytes.NewBufferString("12345")
-			item, err := client.ItemsUpload(AddressId(dirItem.Id), "file.txt", NameConflictBehaviorReplace, data, 5)
+			item, err := client.ItemsUpload(context.Background(), AddressId(dirItem.Id), "file.txt", NameConflictBehaviorReplace, data, 5)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Name).To(Equal("file.txt"))
 
-			item, err = client.ItemsGet(AddressPath("/dir/file.txt"))
+			item, err = client.ItemsGet(context.Background(), AddressPath("/dir/file.txt"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Size).To(Equal(int64(5)))
 		})
 
 		It("should not autorename", func() {
 			data := bytes.NewBufferString("12345")
-			_, err := client.ItemsUpload(AddressRoot, "file.txt", NameConflictBehaviorFail, data, 5)
+			_, err := client.ItemsUpload(context.Background(), AddressRoot, "file.txt", NameConflictBehaviorFail, data, 5)
 			Expect(err).To(HaveOccurred())
 		})
 	})
