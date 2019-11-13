@@ -45,6 +45,8 @@ func IsErrorResync(err error) bool {
 			ode.Err.Code == "ResyncChangesUploadDifferences" ||
 			ode.Err.Code == "resyncChangesApplyDifferences" ||
 			ode.Err.Code == "resyncChangesUploadDifferences" ||
+			ode.Err.Code == "resyncApplyDifferences" ||
+			ode.Err.Code == "resyncUploadDifferences" ||
 			ode.Err.Code == ErrorCodeItemNotFound ||
 			ode.HttpClientError.Got == http.StatusGone
 	}
