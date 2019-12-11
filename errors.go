@@ -50,6 +50,9 @@ func IsErrorResync(err error) bool {
 			ode.Err.Code == ErrorCodeItemNotFound ||
 			ode.HttpClientError.Got == http.StatusGone
 	}
+	if strings.Contains(err.Error(), "Resync required") {
+		return true
+	}
 
 	return false
 }
