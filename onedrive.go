@@ -409,28 +409,10 @@ func (c *OneDrive) ItemsDelta(ctx context.Context, address Address, link string,
 
 func (c *OneDrive) ItemsContent(ctx context.Context, address Address, span *ioutils.FileSpan) (reader io.ReadCloser, size int64, err error) {
 	req := &httpclient.RequestData{
-		Context:         ctx,
-		Method:          "GET",
-		Path:            address.Subpath("/content").String(c.DriveId),
-		ExpectedStatus:  []int{http.StatusFound},
-		IgnoreRedirects: true,
-		RespConsume:     true,
-	}
-
-	res, err := c.Request(req)
-
-	if err != nil {
-		return nil, 0, err
-	}
-
-	location := res.Header.Get("Location")
-
-	req = &httpclient.RequestData{
-		Context:         ctx,
-		Method:          "GET",
-		FullURL:         location,
-		ExpectedStatus:  []int{http.StatusOK, http.StatusPartialContent},
-		IgnoreRedirects: true,
+		Context:        ctx,
+		Method:         "GET",
+		Path:           address.Subpath("/content").String(c.DriveId),
+		ExpectedStatus: []int{http.StatusFound, http.StatusOK, http.StatusPartialContent},
 	}
 
 	if span != nil {
@@ -438,7 +420,7 @@ func (c *OneDrive) ItemsContent(ctx context.Context, address Address, span *iout
 		req.Headers.Set("Range", fmt.Sprintf("bytes=%d-%d", span.Start, span.End))
 	}
 
-	res, err = c.Request(req)
+	res, err := c.Request(req)
 
 	if err != nil {
 		return nil, 0, err
