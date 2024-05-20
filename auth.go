@@ -35,6 +35,7 @@ type OneDriveAuth struct {
 	ExpiresAt      time.Time
 	OnTokenRefresh func(ctx context.Context)
 	IsGraph        bool
+	TokenURL       string
 	HTTPClient     *httpclient.HTTPClient
 
 	mutex sync.Mutex
@@ -66,10 +67,14 @@ func (a *OneDriveAuth) UpdateRefreshToken(ctx context.Context) (err error) {
 
 	var respVal RefreshResp
 
-	fullURL := "https://login.live.com/oauth20_token.srf"
+	fullURL := a.TokenURL
 
-	if a.IsGraph {
-		fullURL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	if fullURL == "" {
+		if a.IsGraph {
+			fullURL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+		} else {
+			fullURL = "https://login.live.com/oauth20_token.srf"
+		}
 	}
 
 	client := a.HTTPClient
