@@ -489,7 +489,7 @@ func (c *OneDrive) ItemsUploadSessionAppend(ctx context.Context, uploadSession *
 		ReqContentLength: contentLength,
 	}
 
-	_, err = c.Request(req)
+	_, err = c.RequestUnauthorized(req)
 
 	if err != nil {
 		return err
@@ -519,7 +519,7 @@ func (c *OneDrive) ItemsUploadSessionFinish(ctx context.Context, uploadSession *
 		RespValue:        &item,
 	}
 
-	_, err = c.Request(req)
+	_, err = c.RequestUnauthorized(req)
 
 	if err != nil {
 		return nil, err
@@ -575,13 +575,13 @@ func (c *OneDrive) ItemsUploadSimple(ctx context.Context, address Address, name 
 	}
 
 	if nameConflictBehavior == NameConflictBehaviorFail && fileExists(name) {
-		return nil, fmt.Errorf("File already exists")
+		return nil, fmt.Errorf("file already exists")
 	}
 
 	if nameConflictBehavior == NameConflictBehaviorRename {
 		name, err = pathutils.UnusedFilename(fileExists, name, c.UnusedFilenameMaxRetries)
 		if err != nil {
-			return nil, fmt.Errorf("Max autorename attempts reached")
+			return nil, fmt.Errorf("max autorename attempts reached")
 		}
 	}
 
@@ -594,7 +594,7 @@ func (c *OneDrive) ItemsUploadSimple(ctx context.Context, address Address, name 
 			path = address.Subpath(":/" + name + ":/content").String(c.DriveId)
 		}
 	} else {
-		return nil, fmt.Errorf("Not implemented because I have no idea how to properly do it")
+		return nil, fmt.Errorf("not implemented because I have no idea how to properly do it")
 	}
 
 	req := &httpclient.RequestData{
